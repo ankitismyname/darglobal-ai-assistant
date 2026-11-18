@@ -1,0 +1,10 @@
+services:
+  assistant:
+    build: .
+    ports:
+      - "7860:7860"
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      # optional: override the free-model fallback list
+      # - LLM_MODELS=google/gemma-4-31b-it:free,nvidia/nemotron-3-ultra-550b-a55b:free
+    restart: unless-stopped

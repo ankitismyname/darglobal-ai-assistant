@@ -1,0 +1,14 @@
+.venv/
+.venv-*/
+**/__pycache__/
+*.pyc
+.git/
+.env
+data/cache/
+data/index/
+data/*.log
+models/
+eval/results*
+scraper/
+PLAN.md
+.DS_Store

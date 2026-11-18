@@ -1,0 +1,15 @@
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+data/cache/
+data/*.log
+.env
+.DS_Store
+models/
+# scraped data is not redistributed (Wasalt's llms.txt forbids it); regenerate with the scrapers
+data/raw/*.jsonl
+data/index/
+# local planning notes and partial eval output
+PLAN.md
+eval/results.md
