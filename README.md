@@ -19,7 +19,9 @@ and it cites the source page for every answer.
 - **API:** `POST <live-url>/api/chat` with `{"message": "..."}` · health check: `GET <live-url>/health`
 - **LLM:** free models on OpenRouter (`google/gemma-4-31b-it:free`, falling back to `nvidia/nemotron-3-ultra-550b-a55b:free`
   and `google/gemma-4-26b-a4b-it:free`)
-- **Container:** a single Docker image (`Dockerfile`), deployed as a Hugging Face Docker Space
+- **Container:** a single Docker image (`Dockerfile`) that holds the app, the data and the search index
+
+![The assistant answering a listing search](docs/screenshot-chat.png)
 
 Example questions to try:
 
@@ -30,27 +32,39 @@ Example questions to try:
 | Which luxury brands has DarGlobal partnered with? | What do lands for sale in Dammam typically cost? |
 | Is DarGlobal listed on a stock exchange? | …then a follow-up: *what about Madinah?* |
 
-## Architecture
+## How it works
 
+**Per question** (only step 4 calls the AI model, once per message):
+
+```mermaid
+flowchart TD
+    Q(["💬 User question"]) --> R["<b>1 · Understand the question</b> (rules, no AI)<br/>city, district, type, sale/rent, beds, budget, size<br/>listing search or company question? follow-up?"]
+    R -->|greeting or non-English| FAST(["Instant reply, no AI call"])
+    R --> K["<b>2a · Search the pages</b><br/>bge-small embeddings + BM25 keywords<br/>merged by reciprocal-rank fusion"]
+    R -->|listing search| L["<b>2b · Search the listings</b><br/>exact filters → relax one if nothing matches<br/>→ rank by meaning → price statistics"]
+    K -->|"passages [1] [2] …"| P["<b>3 · Build the prompt</b><br/>rules + tagged context + last 2 exchanges"]
+    L -->|"listings [L1] [L2] …"| P
+    P --> M["<b>4 · Free LLM on OpenRouter</b><br/>gemma-4-31b → nemotron-3-ultra → gemma-4-26b<br/>streamed"]
+    M -->|rate-limited or down| FB["Fallback answer built<br/>from the search results"]
+    M --> S["<b>5 · Add the sources</b><br/>cited tags → real URLs, in code"]
+    FB --> S
+    S --> A(["✅ Answer with sources<br/>chat UI or POST /api/chat"])
 ```
-            OFFLINE (once)                                        ONLINE (Docker container)
- ┌───────────────────────────────┐                ┌───────────────────────────────────────────────┐
- │ scraper/scrape_darglobal.py   │                │ Gradio chat UI  +  FastAPI (/api/chat,/health)│
- │ scraper/scrape_wasalt.py      │                │                     │                         │
- │   robots.txt + llms.txt rules │                │   query_parser.py: rule-based filters         │
- │   1 req/s, cached, no PII     │                │   (city, district, type, sale/rent, beds,     │
- └──────────────┬────────────────┘                │    budget, size) + listing-vs-knowledge route │
-                ▼                                 │                     │                         │
-        data/raw/*.jsonl ──► app/build_index.py ──►   retriever.py                                │
-                              (runs in docker     │   • knowledge: dense (bge-small) + BM25, RRF  │
-                               build)             │   • listings: exact filters → semantic rank,  │
-                              chunks + embeddings │     auto-relax if no match, price stats       │
-                              listings.parquet    │                     │                         │
-                                                  │   bot.py: prompt with tagged context [1] [L1] │
-                                                  │           → OpenRouter free LLM (streaming)   │
-                                                  │           → sources footer built in code      │
-                                                  └───────────────────────────────────────────────┘
+
+**Once, before deployment** (the index is built during `docker build`):
+
+```mermaid
+flowchart LR
+    S1["<b>Scrape</b><br/>scraper/*.py<br/>robots.txt + llms.txt rules,<br/>1 req/s, no contact data"] --> S2["<b>Raw data</b><br/>data/raw/*.jsonl"]
+    S2 --> S3["<b>Index</b><br/>app/build_index.py<br/>chunk, dedupe, embed"]
+    S3 --> S4[("<b>data/index</b><br/>passages + embeddings<br/>listings.parquet")]
+    S4 --> S5["<b>Docker image</b><br/>Gradio UI + FastAPI"]
 ```
+
+The app itself has three tabs: the chat, a **How it works** page with this flow, and a **Data** page with
+what was scraped.
+
+![The How it works tab](docs/how-it-works.png)
 
 **Design choices**
 
@@ -85,7 +99,8 @@ Snapshot scraped on **18 Nov 2026**:
 | Index | Searchable text chunks (plus one embedding per listing) | 3,126 |
 
 **The scraped data is not committed to this repository.** Wasalt's `llms.txt` forbids redistributing its data, so the
-snapshot lives only inside the deployed container. To rebuild it, run the scrapers (about 20 minutes, see below).
+snapshot lives only inside the deployed container (and in a private dataset the deployment is built from). To
+rebuild it, run the scrapers (about 20 minutes, see below).
 
 **How it was collected**
 
@@ -130,6 +145,12 @@ python app/build_index.py
 OPENROUTER_API_KEY=sk-or-... python app/main.py
 ```
 
+**3. Deploy.** The live demo is a Hugging Face Docker Space built from this `Dockerfile`. A Space repository is
+public, so it holds only the code; the build reads the scraped data and the prebuilt index from a **private**
+Hugging Face dataset, named by the Space variable `DATA_REPO`, using the Space secret `HF_TOKEN`
+(see `app/prepare_data.py`). The OpenRouter key is the Space secret `OPENROUTER_API_KEY`. Any other Docker host
+works the same way, with `data/raw/` filled before `docker build`.
+
 Tests and evaluation:
 
 ```bash
@@ -166,9 +187,12 @@ investment-advice request). Results from the live deployment will be added in `e
 ```
 scraper/   common.py · scrape_darglobal.py · scrape_wasalt.py
 data/raw/  darglobal_pages.jsonl · darglobal_projects.jsonl · wasalt_listings.jsonl · wasalt_pages.jsonl
-app/       config.py · normalize.py · build_index.py · query_parser.py · retriever.py · llm.py · bot.py · main.py
+app/       config.py · normalize.py · build_index.py · query_parser.py · retriever.py · llm.py · bot.py
+           main.py (web app + API) · ui.py (theme, How it works and Data pages) · static/
+           prepare_data.py (Docker build step: data, index, embedding model)
 tests/     test_query_parser.py
 eval/      questions.json · run_eval.py · results.md
+docs/      screenshots
 ```
 
 _Demo built for a technical assessment. Not affiliated with or endorsed by DarGlobal or Wasalt. Not financial advice._

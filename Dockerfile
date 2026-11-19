@@ -1,5 +1,6 @@
+# syntax=docker/dockerfile:1
 # DarGlobal & Wasalt Property Assistant
-# Build:  docker build -t property-assistant .
+# Build:  docker build -t property-assistant .          (with the scraper output in data/raw/)
 # Run:    docker run -p 7860:7860 -e OPENROUTER_API_KEY=sk-or-... property-assistant
 FROM python:3.12-slim
 
@@ -8,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     GRADIO_ANALYTICS_ENABLED=False \
+    GRADIO_SSR_MODE=false \
     HF_HUB_DISABLE_TELEMETRY=1 \
     HOME=/home/user \
     PORT=7860
@@ -23,9 +25,13 @@ USER user
 COPY --chown=user app/ app/
 COPY --chown=user data/raw/ data/raw/
 
-# Download the embedding model and build the search index at build time, so the container starts in seconds
-# and the image is reproducible from the raw scraped data alone.
-RUN python app/build_index.py
+# Data, search index and embedding model are baked into the image, so the container starts in seconds.
+# With data/raw/ filled locally, the index is built here. On Hugging Face Spaces the repo is public and has no
+# data, so it is read from a private dataset (DATA_REPO variable + HF_TOKEN secret); see app/prepare_data.py.
+ARG DATA_REPO=""
+ENV DATA_REPO=${DATA_REPO}
+RUN --mount=type=secret,id=HF_TOKEN,mode=0444,required=false \
+    python app/prepare_data.py
 
 EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
