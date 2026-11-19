@@ -15,8 +15,9 @@ An AI chatbot that answers questions about **DarGlobal** (projects, company, FAQ
 **Wasalt** property listings in Saudi Arabia. It uses only public data scraped from darglobal.co.uk and wasalt.sa,
 and it cites the source page for every answer.
 
-- **Live demo:** _being deployed, link coming shortly_
-- **API:** `POST <live-url>/api/chat` with `{"message": "..."}` · health check: `GET <live-url>/health`
+- **Live demo:** https://thecoderhere-darglobal-ai-assistant.hf.space
+- **API:** `POST https://thecoderhere-darglobal-ai-assistant.hf.space/api/chat` with `{"message": "..."}` ·
+  health check: [`GET /health`](https://thecoderhere-darglobal-ai-assistant.hf.space/health)
 - **LLM:** free models on OpenRouter (`google/gemma-4-31b-it:free`, falling back to `nvidia/nemotron-3-ultra-550b-a55b:free`
   and `google/gemma-4-26b-a4b-it:free`)
 - **Container:** a single Docker image (`Dockerfile`) that holds the app, the data and the search index
@@ -163,7 +164,12 @@ python eval/run_eval.py --url <live-url>
 
 22 questions in `eval/questions.json` cover DarGlobal projects and company facts, Wasalt listing searches (filters,
 price statistics, a follow-up question) and guardrails (off-topic, non-English, an unanswerable question, an
-investment-advice request). Results from the live deployment will be added in `eval/results.md`.
+investment-advice request).
+
+**Live deployment, 19 Nov 2026: 22/22 passed**, median latency 7.3 s, and the no-LLM fallback was not needed.
+Each check means an answer came back, it contains an expected fact (for example the CEO's name, or Oman project
+names) and it has a Sources section (guardrail replies excepted). Every question and full answer is in
+[`eval/results.md`](eval/results.md). Two questions were re-run after network errors on the test machine.
 
 ## Limitations
 

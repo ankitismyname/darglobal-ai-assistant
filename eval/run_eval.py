@@ -17,6 +17,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
+try:  # use the OS trust store when available (needed behind some corporate/ISP proxies)
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 
 def ask_local(bot, q: str, history: list[dict]) -> str:
     ans = ""

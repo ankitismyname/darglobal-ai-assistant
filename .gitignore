@@ -12,4 +12,3 @@ data/raw/*.jsonl
 data/index/
 # local planning notes and partial eval output
 PLAN.md
-eval/results.md
