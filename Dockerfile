@@ -14,8 +14,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/home/user \
     PORT=7860
 
-# Hugging Face Spaces runs containers as uid 1000
-RUN useradd -m -u 1000 user
+# Hugging Face Spaces runs containers as uid 1000; the app folder must belong to that user
+# (the build writes the index and the embedding model there)
+RUN useradd -m -u 1000 user && mkdir -p /home/user/app && chown user:user /home/user/app
 WORKDIR /home/user/app
 
 COPY --chown=user requirements.txt .
